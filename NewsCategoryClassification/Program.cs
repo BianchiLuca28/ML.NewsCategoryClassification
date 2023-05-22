@@ -37,7 +37,7 @@ internal class Program
 
         IDataView dataView = _mlContext.Data.LoadFromEnumerable(data);
 
-        TrainTestData splitDataView = _mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
+        TrainTestData splitDataView = _mlContext.Data.TrainTestSplit(dataView, testFraction: 0.1);
 
         return splitDataView;
     }
@@ -56,7 +56,8 @@ internal class Program
         var pipeline = mlContext.Transforms.Conversion.MapValueToKey(inputColumnName: "Category", outputColumnName: "Label")
             .Append(mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(Article.Headline), outputColumnName: "FeaturizedHeadline"))
             .Append(mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(Article.Short_Description), outputColumnName: "FeaturizedShortDescription"))
-            .Append(mlContext.Transforms.Concatenate("Features", "FeaturizedHeadline", "FeaturizedShortDescription"))
+            .Append(mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(Article.Authors), outputColumnName: "EncodedAuthors"))
+            .Append(mlContext.Transforms.Concatenate("Features", "FeaturizedHeadline", "FeaturizedShortDescription", "EncodedAuthors"))
             .Append(mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy("Label", "Features"))
             .Append(mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
@@ -85,7 +86,7 @@ internal class Program
     private static void UseModelWithSingleItem(MLContext mlContext, ITransformer model)
     {
         _predEngine = mlContext.Model.CreatePredictionEngine<Article, ArticlePrediction>(model);
-        Article article = new Article()
+        Article article1 = new Article()
         {
             Link = "https://www.huffpost.com/entry/covid-boosters-uptake-us_n_632d719ee4b087fae6feaac9",
             Headline = "Over 4 Million Americans Roll Up Sleeves For Omicron-Targeted COVID Boosters",
@@ -95,8 +96,36 @@ internal class Program
             Date = "2022-09-23"
         };
 
-        var prediction = _predEngine.Predict(article);
+        var prediction1 = _predEngine.Predict(article1);
 
-        Console.WriteLine($"=============== Single Prediction just-trained-model - Result: {prediction.Category} ===============");
+        Console.WriteLine($"=============== FIRST Single Prediction just-trained-model - Result: {prediction1.Category} ===============");
+
+        Article article2 = new Article()
+        {
+            Link = "https://www.huffpost.com/entry/american-airlines-passenger-banned-flight-attendant-punch-justice-department_n_632e25d3e4b0e247890329fe",
+            Headline = "American Airlines Flyer Charged, Banned For Life After Punching Flight Attendant On Video",
+            Category = "U.S. NEWS",
+            Short_Description = "He was subdued by passengers and crew when he fled to the back of the aircraft after the confrontation, according to the U.S. attorney's office in Los Angeles.",
+            Authors = "Mary Papenfuss",
+            Date = "2022-09-23"
+        };
+
+        var prediction2 = _predEngine.Predict(article2);
+
+        Console.WriteLine($"=============== SECOND (False) Single Prediction just-trained-model - Result: {prediction2.Category} ===============");
+
+        Article article3 = new Article()
+        {
+            Link = "https://www.huffpost.com/entry/american-airlines-passenger-banned-flight-attendant-punch-justice-department_n_632e25d3e4b0e247890329fe",
+            Headline = "Citing Imminent Danger Cloudflare Drops Hate Site Kiwi Farms",
+            Category = "TECH",
+            Short_Description = "Cloudflare CEO Matthew Prince had previously resisted calls to block the site.",
+            Authors = "The Associated Press, AP",
+            Date = "2022-09-05"
+        };
+
+        var prediction3 = _predEngine.Predict(article3);
+
+        Console.WriteLine($"=============== THIRD (False) Single Prediction just-trained-model - Result: {prediction3.Category} ===============");
     }
 }
