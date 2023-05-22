@@ -3,6 +3,9 @@
 ##
 ## Get latest from https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 
+# Specific ignore for this project
+Data/News_Category_Dataset_v3.json
+
 # User-specific files
 *.rsuser
 *.suo
