@@ -5,6 +5,7 @@ using NewsCategoryClassification;
 using NewsCategoryClassification.Data;
 using System.Reflection;
 using static Microsoft.ML.DataOperationsCatalog;
+using MathNet.Numerics.Statistics;
 
 internal class Program
 {
@@ -25,7 +26,9 @@ internal class Program
 
         _trainedModel = BuildAndTrainModel(_mlContext, _dataView.TrainSet);
 
-        Evalute(_mlContext, _trainedModel, _dataView.TestSet);
+        EvaluteTrainData(_mlContext, _trainedModel, _dataView.TrainSet);
+
+        EvaluteTestData(_mlContext, _trainedModel, _dataView.TestSet);
 
         UseModelWithSingleItem(_mlContext, _trainedModel);
     }
@@ -35,22 +38,70 @@ internal class Program
     {
         List<Article> data = JSONextractor.ReadData(dataPath);
 
+        DataStatistics(data);
+
         IDataView dataView = _mlContext.Data.LoadFromEnumerable(data);
 
-        TrainTestData splitDataView = _mlContext.Data.TrainTestSplit(dataView, testFraction: 0.1);
+        TrainTestData splitDataView = _mlContext.Data.TrainTestSplit(dataView, testFraction: 0.2);
 
         return splitDataView;
     }
 
-    static ITransformer BuildAndTrainModel(MLContext mlContext, IDataView splitTrainSet)
+    private static void DataStatistics(List<Article> data)
+    {
+        var maxCategoryName = "";
+        var maxCategoryMultiplicity = -1;
+
+        var minCategoryName = "";
+        var minCategoryMultiplicity = 50000;
+
+        var count_categories = data.GroupBy(x => x.Category).Count();
+
+        var categories_multiplicities = data.GroupBy(x => x.Category).Select(category => category.Count());
+
+        var categories = data.GroupBy(x => x.Category);
+
+        Console.WriteLine($"======= Il numero di Categorie sono: {count_categories} ===========");
+
+        Console.WriteLine("********************************************************************");
+        Console.WriteLine("****************Printing Categories Multiplicity********************");
+
+        foreach (var category in categories)
+        {
+            Console.WriteLine($" - Category: {category.Key} , Multiplicity: {category.Count()}");
+            if (category.Count() > maxCategoryMultiplicity)
+            {
+                maxCategoryMultiplicity = category.Count();
+                maxCategoryName = category.Key;
+            } else if (category.Count() < minCategoryMultiplicity)
+            {
+                minCategoryMultiplicity = category.Count();
+                minCategoryName = category.Key;
+            }
+        }
+        Console.WriteLine("********************************************************************");
+
+        Console.WriteLine($" - MAX Category: {maxCategoryName} , Count: {maxCategoryMultiplicity}");
+        Console.WriteLine($" - Min Category: {minCategoryName} , Count: {minCategoryMultiplicity}");
+
+        Console.WriteLine("********************************************************************");
+        Console.WriteLine("***************************STATISTICS*******************************");
+        var mean = categories_multiplicities.Sum() / (double) categories_multiplicities.Count();
+        Console.WriteLine($" - Mean/Average: {mean}");
+        // Console.WriteLine($" - Variance: {(categories_multiplicities.Select(x => (x - mean)).Sum()) / categories_multiplicities.Count()}");
+
+        Console.WriteLine("********************************************************************");
+    }
+
+    private static ITransformer BuildAndTrainModel(MLContext mlContext, IDataView splitTrainSet)
     {
 
-        //var pipeline = mlContext.Transforms.Conversion.MapValueToKey(inputColumnName: "Category", outputColumnName: "Label")
+        //IEstimator<ITransformer> pipeline = mlContext.Transforms.Conversion.MapValueToKey(inputColumnName: "Category", outputColumnName: "Label")
         //    .Append(mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(Article.Headline), outputColumnName: "FeaturizedHeadline"))
         //    .Append(mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(Article.Short_Description), outputColumnName: "FeaturizedShortDescription"))
         //    .Append(mlContext.Transforms.Concatenate("Features", "FeaturizedHeadline", "FeaturizedShortDescription"));
 
-        //pipeline.Append(mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy("Label", "Features"))
+        //var training_pipeline = pipeline.Append(mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy("Label", "Features"))
         //    .Append(mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
         var pipeline = mlContext.Transforms.Conversion.MapValueToKey(inputColumnName: "Category", outputColumnName: "Label")
@@ -58,7 +109,7 @@ internal class Program
             .Append(mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(Article.Short_Description), outputColumnName: "FeaturizedShortDescription"))
             .Append(mlContext.Transforms.Text.FeaturizeText(inputColumnName: nameof(Article.Authors), outputColumnName: "EncodedAuthors"))
             .Append(mlContext.Transforms.Concatenate("Features", "FeaturizedHeadline", "FeaturizedShortDescription", "EncodedAuthors"))
-            .Append(mlContext.MulticlassClassification.Trainers.SdcaMaximumEntropy("Label", "Features"))
+            .Append(mlContext.MulticlassClassification.Trainers.LbfgsMaximumEntropy("Label", "Features"))
             .Append(mlContext.Transforms.Conversion.MapKeyToValue("PredictedLabel"));
 
         var model = pipeline.Fit(splitTrainSet);
@@ -66,7 +117,24 @@ internal class Program
         return model;
     }
 
-    private static void Evalute(MLContext mlContext, ITransformer trainedModel, IDataView splitTestSet)
+    private static void EvaluteTrainData(MLContext mlContext, ITransformer trainedModel, IDataView splitTrainSet)
+    {
+        Console.WriteLine("=============== Evaluating Model accuracy with Train data ===============");
+        var predictions = trainedModel.Transform(splitTrainSet);
+
+        var testMetrics = mlContext.MulticlassClassification.Evaluate(predictions);
+
+        Console.WriteLine($"*************************************************************************************************************");
+        Console.WriteLine($"*       Metrics for Multi-class Classification model - Train Data     ");
+        Console.WriteLine($"*------------------------------------------------------------------------------------------------------------");
+        Console.WriteLine($"*       MicroAccuracy:    {testMetrics.MicroAccuracy:0.###}");
+        Console.WriteLine($"*       MacroAccuracy:    {testMetrics.MacroAccuracy:0.###}");
+        Console.WriteLine($"*       LogLoss:          {testMetrics.LogLoss:#.###}");
+        Console.WriteLine($"*       LogLossReduction: {testMetrics.LogLossReduction:#.###}");
+        Console.WriteLine($"*************************************************************************************************************");
+    }
+
+    private static void EvaluteTestData(MLContext mlContext, ITransformer trainedModel, IDataView splitTestSet)
     {
         Console.WriteLine("=============== Evaluating Model accuracy with Test data ===============");
         var predictions = trainedModel.Transform(splitTestSet);
